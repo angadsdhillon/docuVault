@@ -1,0 +1,157 @@
+# Project: DocuVault
+# AI Document Organizer — Email Attachment Extractor & Categorizer
+
+## What this app does
+This is a SaaS web application that connects to users' email inboxes (Gmail via Google OAuth, and later Outlook), scans new emails every few hours in the background, extracts any attachments (PDFs, Excel sheets, Word docs, images, etc.), uses AI to categorize them into folders (Receipts, Travel, Work, School, Contracts, Subscriptions, Tickets, Tourism, Medical, Other), generates a short AI summary of the email the document came from, and stores both the file and summary securely so the user can access their documents anytime — even offline.
+
+## Core principles — always follow these
+- Write production-grade, scalable code. This app will serve thousands of real users.
+- Security and privacy are the highest priority. User email contents must NEVER be logged, stored in plaintext, or accessible to the app owner. Only extracted attachments and AI-generated summaries are stored.
+- Always handle errors gracefully. Every API call, database query, and background job must have try/catch with meaningful error messages.
+- Write clean, readable, well-commented code. Comment the "why", not the "what".
+- Never hardcode secrets, API keys, or credentials. Always use environment variables.
+- Always think about what happens at scale: 10,000 users, large file volumes, rate limits.
+- Mobile-first responsive design on all UI components.
+- Follow accessibility best practices (ARIA labels, keyboard navigation, semantic HTML).
+
+## Tech stack — never deviate from this without asking
+- **Framework:** Next.js 14+ with App Router (not Pages Router)
+- **Language:** TypeScript throughout — no plain JavaScript files
+- **Styling:** Tailwind CSS only — no inline styles, no CSS modules unless necessary
+- **Database:** Supabase (PostgreSQL) — for user data, document metadata, categories, summaries
+- **File Storage:** Supabase Storage — for the actual attachment files
+- **Authentication:** Supabase Auth with Google OAuth
+- **Email Integration:** Google Gmail API via OAuth 2.0 (later: Microsoft Graph API for Outlook)
+- **AI/LLM:** Anthropic Claude API (claude-sonnet-4-6) — for categorization and summarization
+- **Background Jobs:** Supabase Edge Functions or pg_cron — for scheduled email scanning
+- **Payments:** Stripe — subscription billing with usage-based storage tiers
+- **Deployment:** Vercel
+- **Email queue/retry logic:** Use Supabase queues or a simple retry table in Postgres
+
+## Project structure — always maintain this layout
+/app                    → Next.js App Router pages
+
+/api                  → API route handlers
+
+/auth               → Auth callbacks
+
+/email              → Gmail webhook & manual sync endpoints
+
+/stripe             → Stripe webhook handlers
+
+/documents          → Document fetch/delete endpoints
+
+/(auth)               → Login, register pages (public)
+
+/(dashboard)          → Protected pages (require login)
+
+/home               → Category grid home screen
+
+/category/[slug]    → Document list within a category
+
+/document/[id]      → Single document viewer
+
+/components             → Reusable UI components
+
+/ui                   → Generic (Button, Card, Modal, Badge)
+
+/documents            → Document-specific components
+
+/layout               → Header, sidebar, shell
+
+/lib                    → Utility functions and service clients
+
+/supabase.ts          → Supabase client (server + client)
+
+/gmail.ts             → Gmail API helpers
+
+/claude.ts            → Anthropic API helpers
+
+/stripe.ts            → Stripe helpers
+
+/encryption.ts        → Encryption/decryption utilities
+
+/hooks                  → Custom React hooks
+
+/types                  → TypeScript type definitions
+
+/supabase
+
+/migrations           → SQL migration files
+
+/functions            → Supabase Edge Functions (background jobs)
+
+## Security rules — NEVER violate these
+- Gmail OAuth tokens must be encrypted before storing in the database using AES-256. Use the encryption.ts utility for all token storage and retrieval.
+- Email body content must NEVER be stored in the database or logs. Only the AI-generated summary is saved.
+- All Supabase queries must use Row Level Security (RLS). Every table must have RLS policies so users can only access their own data.
+- File uploads to Supabase Storage must be stored in private buckets. Files are served via signed URLs with short expiry (1 hour max).
+- All API routes must verify the authenticated user session before doing anything.
+- Rate limit all API endpoints. Implement rate limiting on email sync to avoid Gmail API quota violations.
+- Never expose internal error details to the client. Log detailed errors server-side only.
+- Stripe webhooks must verify the Stripe signature before processing.
+- Environment variables: NEVER commit .env files. Always reference process.env.VARIABLE_NAME.
+
+## Gmail integration — compliance rules
+- Always request the minimum Gmail OAuth scopes needed: `gmail.readonly` only (we read, never send or delete)
+- Display a clear privacy notice before Gmail connection explaining exactly what data is accessed
+- Users must be able to disconnect Gmail at any time and have all their data deleted (GDPR/right to erasure)
+- Respect Gmail API rate limits: use exponential backoff on 429 errors
+- Email scanning must be incremental — use Gmail's `historyId` to only fetch emails newer than the last sync, never re-scan everything
+- Store the last `historyId` per user in the database after every sync
+
+## Database schema — always reference this
+Tables to maintain:
+- `users` — id, email, created_at, subscription_tier, storage_used_bytes, stripe_customer_id
+- `gmail_connections` — id, user_id, encrypted_access_token, encrypted_refresh_token, last_history_id, last_synced_at, is_active
+- `documents` — id, user_id, category, original_filename, storage_path, file_size_bytes, mime_type, email_summary, email_subject, email_sender, email_received_at, created_at
+- `categories` — id, slug, label, icon_name, sort_order (these are system-defined, not user-created)
+- `sync_jobs` — id, user_id, status (pending/running/completed/failed), started_at, completed_at, documents_found, error_message
+- `subscriptions` — id, user_id, stripe_subscription_id, plan (free/pro/business), storage_limit_bytes, status, current_period_end
+
+## Storage tiers
+- Free: 500MB, ~200 documents
+- Pro ($5.99/month): 5GB, ~2000 documents
+- Business ($14.99/month): 20GB, unlimited documents
+
+## AI categorization — how it works
+When a new attachment is found during email sync:
+1. Extract attachment binary from Gmail API
+2. Send attachment metadata + email subject + sender + snippet to Claude API (NOT the full email body — only the snippet/subject/sender and filename)
+3. Claude returns: { category: string, summary: string (max 2 sentences) }
+4. Valid categories: receipts, travel, work, school, contracts, subscriptions, tickets, medical, legal, insurance, other
+5. Store the document in Supabase Storage under: `{user_id}/{category}/{document_id}/{filename}`
+6. Store metadata + summary in the documents table
+- Never send full email body to Claude — use only subject, sender name, email snippet (first 500 chars), and filename
+
+## UI/UX rules
+- Clean, minimal design. White/light gray backgrounds. No clutter.
+- Home screen: a grid of category cards, each showing icon, category name, and document count
+- Category screen: scrollable list of documents showing filename, email summary, sender, date
+- Document viewer: full-screen document preview with metadata panel
+- Loading states on every async action
+- Empty states with helpful messaging when categories are empty
+- Offline: use service workers + IndexedDB to cache opened documents locally for offline access
+- Dark mode support from day one using Tailwind's dark: prefix
+
+## Code style
+- Use async/await, never .then() chains
+- Prefer server components in Next.js App Router. Only use 'use client' when truly needed (event handlers, hooks, browser APIs)
+- All database calls go through the /lib layer, never directly in components or pages
+- All API responses follow this shape: { data: T | null, error: string | null }
+- Validate all user inputs with Zod before processing
+- Use descriptive variable names. No single-letter variables except loop counters.
+
+## When I ask you to build something
+- Always ask if you're unsure about scope before writing code
+- Build one focused thing at a time — don't add unrequested features
+- After writing code, summarize: what you built, what still needs to be done, and any risks or things to watch out for
+- If you see a potential security issue in existing code, flag it immediately even if I didn't ask
+- Prefer editing existing files over creating new ones unless a new file is clearly the right choice
+
+## Before writing code that requires external credentials
+Whenever you are about to write code that requires an API key, OAuth credential, or 
+external service account, STOP and list exactly what I need to create/retrieve before 
+you write that code. Tell me exactly where to find each value and what to name each 
+environment variable. Do not write code that references missing env vars without 
+telling me first.
