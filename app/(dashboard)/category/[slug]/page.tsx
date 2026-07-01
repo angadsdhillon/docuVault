@@ -1,18 +1,50 @@
+import { DocumentRow } from "@/components/documents/DocumentRow";
+import { AppShell } from "@/components/layout/AppShell";
+import { EmptyState } from "@/components/ui/EmptyState";
+import {
+  getCategoryBySlug,
+  PLACEHOLDER_DOCUMENTS,
+} from "@/lib/placeholder-data";
+import { FolderOpen } from "lucide-react";
+
 type CategoryPageProps = {
   params: { slug: string };
 };
 
-export default function CategoryPage({ params }: CategoryPageProps) {
+async function simulateLoading() {
+  await new Promise((resolve) => setTimeout(resolve, 600));
+}
+
+export default async function CategoryPage({ params }: CategoryPageProps) {
+  await simulateLoading();
+
+  const category = getCategoryBySlug(params.slug);
+
+  if (!category) {
+    return (
+      <AppShell showBack backHref="/home" title="Category not found">
+        <EmptyState
+          icon={FolderOpen}
+          title="Category not found"
+          description="This category doesn't exist. Head back to browse your documents."
+        />
+      </AppShell>
+    );
+  }
+
   return (
-    <main className="min-h-screen bg-gray-50 p-6 dark:bg-gray-950">
-      <div className="mx-auto max-w-5xl">
-        <h1 className="text-2xl font-semibold capitalize text-gray-900 dark:text-gray-100">
-          {params.slug.replace(/-/g, " ")}
-        </h1>
-        <p className="mt-2 text-gray-600 dark:text-gray-400">
-          Document list placeholder for this category.
-        </p>
+    <AppShell
+      showBack
+      backHref="/home"
+      title={category.label}
+    >
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+        <div className="divide-y divide-gray-200 dark:divide-gray-800">
+          {PLACEHOLDER_DOCUMENTS.map((document) => (
+            <DocumentRow key={document.id} document={document} />
+          ))}
+        </div>
       </div>
-    </main>
+    </AppShell>
   );
 }
